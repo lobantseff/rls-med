@@ -72,7 +72,10 @@ export function parseCSV(text) {
     } else field += ch;
   }
   if (field !== '' || row.length) { row.push(field); rows.push(row); }
-  const [head, ...body] = rows;
+  // Newer OWID exports use lowercase entity/code/year/day; normalize to the capitalized names.
+  const STD = { entity: 'Entity', code: 'Code', year: 'Year', day: 'Day' };
+  const head = rows[0].map((h) => STD[h] || h);
+  const body = rows.slice(1);
   return body.map((r) => Object.fromEntries(head.map((h, i) => [h, r[i]])));
 }
 // The value column is whatever is not Entity / Code / Year / Day.
