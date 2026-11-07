@@ -1,0 +1,12 @@
+{
+  "name": "country-stats-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Dashboard with statistics about countries: look book and component kit.",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "themes": "node scripts/build-themes.mjs"
+  },
+  "license": "Apache-2.0"
+}
