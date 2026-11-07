@@ -96,7 +96,7 @@
 
   function renderTable() {
     $('table').replaceChildren();
-    CS.table($('table'), { rows: picked(), metric: state.metric, variant: 'comfortable', limit: 10 });
+    CS.table($('table'), { rows: picked(), metric: state.metric, variant: 'comfortable', limit: 10, link: CS.countryHref });
     $('table-title').textContent = `All countries · ${withValue(picked()).length} with data`;
   }
 
@@ -111,12 +111,7 @@
   }
 
   function renderSources() {
-    const order = [['life', 'Life expectancy'], ['gdp', 'GDP per person'], ['co2', 'CO₂ per person'], ['net', 'Internet users'], ['pop', 'Population']];
-    $('sources').replaceChildren(...order.flatMap(([k, lab]) => {
-      const s = (D.sources || {})[k];
-      if (!s) return [];
-      return [el('dt', { text: lab }), el('dd', {}, `${s.citation}${s.unit ? ` · ${s.unit}` : ''}${s.lastUpdated ? ` · updated ${s.lastUpdated}` : ''} · `, el('a', { href: s.url, target: '_blank', rel: 'noopener', text: 'OWID chart' }))];
-    }));
+    CS.sourcesList($('sources'));
     $('data-note').textContent = `${D.note} Each country shows its latest available year (at most 3 years old). Data built ${D.generated}.`;
   }
 

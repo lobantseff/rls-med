@@ -1,0 +1,108 @@
+<title>Country Stats Country Page</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/themes.css">
+<link rel="stylesheet" href="css/base.css">
+<style>
+  .hero { display: grid; gap: 10px; padding-block: 24px 16px; }
+  .hero-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+  .hero-row > div { min-width: 0; }
+  .facts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .finder { display: flex; gap: 8px; align-items: center; width: 100%; max-width: 320px; }
+  .finder .search { max-width: none; flex: 1; }
+  .page { display: grid; gap: var(--gap); padding-block: 4px 40px; }
+  .strips { display: grid; gap: 4px; }
+  .strip-row { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 14px; align-items: center; padding-block: 6px; border-top: 1px solid var(--grid); }
+  .strip-row:first-child { border-top: 0; }
+  .strip-meta .k { font-size: 12px; color: var(--muted); }
+  .strip-meta .v { font: 600 17px var(--font-num); }
+  .strip-meta .r { font-size: 11.5px; color: var(--ink-2); }
+  @media (max-width: 640px) { .strip-row { grid-template-columns: minmax(0, 1fr); gap: 0; } .strip-meta { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; } }
+  .section-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 8px; }
+  table.data.years td:first-child, table.data.years th:first-child { position: sticky; left: 0; background: var(--surface); }
+  .sources { display: grid; gap: 10px; padding-block: 8px 40px; border-top: 1px solid var(--border); }
+  .sources dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 12.5px; }
+  .sources dt { color: var(--ink-2); font-weight: 600; }
+  .sources dd { margin: 0; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+  .sources a, .nextlink { color: var(--accent); text-decoration: none; font-weight: 500; }
+  @media (max-width: 560px) { .sources dl { grid-template-columns: 1fr; } }
+</style>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand"><a class="brand-mark nextlink" id="home" href="index.html" style="color:var(--ink)">Country Stats</a><span class="badge">Our World in Data</span></div>
+    <div id="mode"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero" aria-labelledby="c-name">
+    <div class="hero-row">
+      <div>
+        <div class="eyebrow" id="c-eyebrow">Country</div>
+        <h1 class="h1" id="c-name">France</h1>
+      </div>
+      <form class="finder" id="finder" role="search">
+        <input class="search" id="c-search" type="search" list="c-list" placeholder="Find another country" aria-label="Find another country" autocomplete="off">
+        <datalist id="c-list"></datalist>
+        <button class="btn" type="submit">Go</button>
+      </form>
+    </div>
+    <div class="facts" id="c-facts"></div>
+  </section>
+
+  <section class="page" aria-label="Country statistics">
+    <div class="kpis" id="kpis"></div>
+
+    <article class="card">
+      <div class="card-head"><div><h2 class="card-title" id="pos-title">Where France stands</h2><p class="card-sub" id="pos-sub">Every dot is a country · vertical line is the world median</p></div>
+        <div class="legend" id="pos-legend"></div></div>
+      <div class="strips" id="strips"></div>
+    </article>
+
+    <div class="section-bar">
+      <h2 class="h2" id="detail-h">In detail</h2>
+      <div class="filterbar" id="filters"></div>
+    </div>
+
+    <div class="grid">
+      <article class="card span-7">
+        <div class="card-head"><div><h3 class="card-title" id="trend-title">Trend</h3><p class="card-sub" id="trend-sub"></p></div></div>
+        <div class="legend" id="trend-legend"></div>
+        <div class="chart" id="trend"></div>
+      </article>
+      <article class="card span-5">
+        <div class="card-head"><div><h3 class="card-title" id="peers-title">Nearest in region</h3><p class="card-sub" id="peers-sub"></p></div></div>
+        <div class="chart" id="peers"></div>
+      </article>
+
+      <article class="card span-6">
+        <div class="card-head"><div><h3 class="card-title">Income and life expectancy</h3><p class="card-sub" id="sc-sub"></p></div></div>
+        <div class="legend" id="sc-legend"></div>
+        <div class="chart" id="scatter"></div>
+      </article>
+      <article class="card span-6">
+        <div class="card-head"><div><h3 class="card-title" id="yrs-title">Year by year</h3><p class="card-sub">Every five years and the latest · exact values</p></div></div>
+        <div class="tablewrap" id="years"></div>
+      </article>
+    </div>
+  </section>
+
+  <footer class="sources" aria-labelledby="src-h">
+    <h2 class="h3" id="src-h">Sources</h2>
+    <dl id="sources"></dl>
+    <p class="note" id="data-note"></p>
+  </footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script src="js/skins.js"></script>
+<script src="data/owid.js"></script>
+<script src="js/core.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/links.js"></script>
+<script src="js/country.js"></script>

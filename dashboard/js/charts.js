@@ -65,7 +65,7 @@
     const max = o.max || d3.max(rows, (r) => r.value) || 1;
     const x = d3.scaleLinear([0, max], [labelW, w - valueW]);
     const svg = CS.svg(el, w, h, o.title);
-    const color = (r) => (o.variant === 'region' ? CS.regionColor(r.region) : o.color || 'var(--accent)');
+    const color = (r) => (o.highlight ? (r.id === o.highlight ? 'var(--accent)' : 'var(--axis)') : o.variant === 'region' ? CS.regionColor(r.region) : o.color || 'var(--accent)');
 
     svg.append('line').attr('x1', labelW + 0.5).attr('x2', labelW + 0.5).attr('y1', top - 2).attr('y2', h)
       .attr('stroke', 'var(--axis)');
@@ -73,7 +73,7 @@
     const g = svg.selectAll('g.row').data(rows).join('g').attr('class', 'row')
       .attr('transform', (d, i) => `translate(0,${top + i * rowH})`);
     g.append('text').attr('x', labelW - 8).attr('y', rowH / 2 + 4).attr('text-anchor', 'end')
-      .attr('class', 'cs-label').text((d) => d.label);
+      .attr('class', (d) => 'cs-label' + (o.highlight && d.id === o.highlight ? ' cs-strong' : '')).text((d) => d.label);
     if (o.variant === 'lollipop') {
       g.append('line').attr('x1', labelW).attr('x2', (d) => x(d.value)).attr('y1', rowH / 2).attr('y2', rowH / 2)
         .attr('stroke', color).attr('stroke-width', 2).attr('stroke-linecap', 'round');
@@ -384,6 +384,7 @@
       .transition().duration(dur).ease(d3.easeLinear)
       .attr('cx', (d) => x(d.x)).attr('cy', (d) => y(d.y)).attr('r', (d) => r(d.size));
     if (v === 'emphasis') svg.select('g.dots').selectAll('circle').filter((d) => d.region === o.focusRegion).raise();
+    svg.select('g.labels').raise();
 
     svg.select('g.trend').selectAll('*').remove();
     if (v === 'trend') {
@@ -398,7 +399,13 @@
         .text(`+${b.toFixed(1)} yrs per 10× income`);
     }
 
-    const labels = pts.filter((d) => (o.labels || []).slice(0, w < 500 ? 2 : 99).includes(d.id));
+    const labels = pts.filter((d) => (o.labels || []).slice(0, w < 500 ? 2 : 99).includes(d.id) || d.id === o.mark);
+    let markG = svg.select('g.mark');
+    if (markG.empty()) markG = svg.append('g').attr('class', 'mark');
+    markG.selectAll('circle').data(pts.filter((d) => d.id === o.mark), (d) => d.id).join('circle')
+      .attr('fill', 'var(--accent)').attr('stroke', 'var(--surface)').attr('stroke-width', 2.5).style('pointer-events', 'none')
+      .attr('cx', (d) => x(d.x)).attr('cy', (d) => y(d.y)).attr('r', (d) => Math.max(7, r(d.size)));
+    markG.raise();
     const flip = (d) => x(d.x) + r(d.size) + 6 + CS.textW(d.label, 12) > w - 2;
     svg.select('g.labels').selectAll('text').data(labels, (d) => d.id).join('text').attr('class', 'cs-label cs-halo')
       .transition().duration(dur).ease(d3.easeLinear)
@@ -707,6 +714,55 @@
       const f = v === 'div' ? (t) => (t > 0 ? '+' : '') + o.dfmt(t) : o.fmt;
       o.legendEl.append(CS.el('span', { class: 'cs-leg-ramp' }, CS.el('span', { class: 'cs-num', text: f(dom[0]) }), CS.el('i', { class: 'cs-leg-grad', style: `background:linear-gradient(90deg,${stops})` }), CS.el('span', { class: 'cs-num', text: f(dom[dom.length - 1]) })));
     }
+  };
+
+  /* ======================================================================
+   * Position strip: every country as a dot on one axis, one highlighted.
+   * o.values [{id,label,v,region}], o.highlight id, o.peerRegion, o.fmt,
+   * o.tick, o.log, o.ref (number), o.refLabel
+   * ==================================================================== */
+  CS.strip = (el, w, o) => {
+    const vals = o.values.filter((d) => CS.isNum(d.v) && (!o.log || d.v > 0));
+    if (!vals.length) return empty(el, 'No data');
+    const h = 78, m = { l: 10, r: 10, t: 26, b: 22 }, mid = m.t + (h - m.t - m.b) / 2;
+    const ext = d3.extent(vals, (d) => d.v);
+    const x = (o.log ? d3.scaleLog().domain([ext[0] * 0.9, ext[1] * 1.1]) : d3.scaleLinear().domain(ext).nice()).range([m.l, w - m.r]);
+    const svg = CS.svg(el, w, h, o.title);
+    const ticks = o.log ? logTicks(x, w) : x.ticks(w < 420 ? 4 : 6);
+    svg.append('line').attr('x1', m.l).attr('x2', w - m.r).attr('y1', mid + 0.5).attr('y2', mid + 0.5).attr('stroke', 'var(--grid)');
+    svg.append('g').selectAll('text').data(ticks).join('text').attr('class', 'cs-tick')
+      .attr('x', (d) => x(d)).attr('y', h - 4).attr('text-anchor', 'middle').text(o.tick || o.fmt);
+    if (o.ref != null && CS.isNum(o.ref)) {
+      svg.append('line').attr('x1', x(o.ref) + 0.5).attr('x2', x(o.ref) + 0.5).attr('y1', mid - 16).attr('y2', mid + 16).attr('stroke', 'var(--ink-2)');
+    }
+    const hi = vals.find((d) => d.id === o.highlight);
+    const others = vals.filter((d) => d !== hi);
+    const jy = (d, i) => mid + jitter(d.label, i) * 18;
+    svg.append('g').selectAll('circle').data(others).join('circle')
+      .attr('cx', (d) => x(d.v)).attr('cy', jy).attr('r', 3.5)
+      .attr('fill', (d) => (o.peerRegion && d.region === o.peerRegion ? CS.regionColor(d.region) : 'var(--axis)'))
+      .attr('fill-opacity', (d) => (o.peerRegion && d.region === o.peerRegion ? 0.9 : 0.8));
+    if (hi) {
+      svg.append('circle').attr('cx', x(hi.v)).attr('cy', mid).attr('r', 7).attr('fill', 'var(--accent)').attr('stroke', 'var(--surface)').attr('stroke-width', 2.5);
+      const lab = `${hi.label} ${o.fmt(hi.v)}`;
+      const lw = CS.textW(lab, 12) + 4;
+      svg.append('text').attr('class', 'cs-label cs-strong').attr('y', 13)
+        .attr('x', Math.max(m.l + lw / 2, Math.min(w - m.r - lw / 2, x(hi.v)))).attr('text-anchor', 'middle').text(lab);
+      svg.append('line').attr('x1', x(hi.v)).attr('x2', x(hi.v)).attr('y1', 17).attr('y2', mid - 8).attr('stroke', 'var(--accent)').attr('stroke-width', 1.5);
+    }
+    // Nearest-dot hover
+    const pts = vals.map((d, i) => ({ d, px: x(d.v), py: d === hi ? mid : jy(d, others.indexOf(d)) }));
+    const del = d3.Delaunay.from(pts, (p) => p.px, (p) => p.py);
+    svg.append('rect').attr('x', 0).attr('y', m.t - 6).attr('width', w).attr('height', h - m.t - m.b + 12).attr('fill', 'transparent')
+      .attr('data-tip-target', '').style('touch-action', 'pan-y')
+      .on('pointermove pointerdown', (e) => {
+        const [px, py] = d3.pointer(e, svg.node());
+        const p = pts[del.find(px, py)];
+        if (!p) return;
+        const rank = vals.slice().sort((a, b) => b.v - a.v).indexOf(p.d) + 1;
+        CS.showTip(e, p.d.label, [{ value: o.fmt(p.d.v), label: `#${rank} of ${vals.length}`, color: p.d === hi ? 'var(--accent)' : (o.peerRegion && p.d.region === o.peerRegion ? CS.regionColor(p.d.region) : 'var(--axis)'), key: 'dot' }]);
+      })
+      .on('pointerleave', CS.hideTip);
   };
 
   /* ======================================================================

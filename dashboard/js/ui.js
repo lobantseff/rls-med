@@ -138,7 +138,7 @@
         const dl = CS.deltaOf(c[o.metric], base(c), m);
         const tds = {
           rank: el('td', { class: 'rank', text: String(i + 1) }),
-          name: el('td', {}, el('span', { class: 'rdot', style: `background:${CS.regionColor(c.region)}` }), c.name),
+          name: el('td', {}, el('span', { class: 'rdot', style: `background:${CS.regionColor(c.region)}` }), o.link ? el('a', { class: 'clink', href: o.link(c), text: c.name }) : c.name),
           region: el('td', { class: 'muted', text: c.region }),
           metric: el('td', { class: 'r num' }, dense ? m.fmt(c[o.metric]) : el('span', { class: 'inbar' }, m.fmt(c[o.metric]), el('span', { class: 'track' }, el('i', { style: `width:${(c[o.metric] / max) * 100}%` })))),
           trend: el('td', {}, CS.sparkline(c.series[o.metric], { w: 80, h: 22, area: false })),
@@ -160,6 +160,19 @@
     }
     render();
   };
+
+  /* ---------- sources footer ---------- */
+  CS.sourcesList = (dl) => {
+    const order = [['life', 'Life expectancy'], ['gdp', 'GDP per person'], ['co2', 'CO₂ per person'], ['net', 'Internet users'], ['pop', 'Population']];
+    dl.replaceChildren(...order.flatMap(([k, lab]) => {
+      const s = (D.sources || {})[k];
+      if (!s) return [];
+      return [el('dt', { text: lab }), el('dd', {}, `${s.citation}${s.unit ? ` · ${s.unit}` : ''}${s.lastUpdated ? ` · updated ${s.lastUpdated}` : ''} · `, el('a', { href: s.url, target: '_blank', rel: 'noopener', text: 'OWID chart' }))];
+    }));
+  };
+
+  // Link to the country page for a country.
+  CS.countryHref = (c) => `${(window.CS_LINKS || {}).country || 'country.html'}#${c.iso3}`;
 
   /* ---------- country profile ---------- */
   CS.profile = (c, variant = 'compact') => {

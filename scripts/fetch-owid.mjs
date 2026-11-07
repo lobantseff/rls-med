@@ -11,7 +11,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { feature } from 'topojson-client';
-import { geoCentroid } from 'd3-geo';
+import { geoArea, geoCentroid } from 'd3-geo';
 
 const require = createRequire(import.meta.url);
 const iso = require('i18n-iso-countries');
@@ -140,8 +140,7 @@ export async function build({ offlineDir } = {}) {
     }
   }
 
-  const centroid = {};
-  for (const f of feature(world50, world50.objects.countries).features) if (f.id) centroid[f.id] = geoCentroid(f);
+  const centroid = centroids();
 
   const round = (v, d) => (v == null ? null : +v.toFixed(d));
   const countries = [];
@@ -191,6 +190,22 @@ export async function build({ offlineDir } = {}) {
   return data;
 }
 
+// Centre of each country's largest landmass, so overseas territories
+// (French Guiana, Alaska, Svalbard…) don't pull the point into the sea.
+export function centroids() {
+  const out = {};
+  for (const f of feature(world50, world50.objects.countries).features) {
+    if (!f.id) continue;
+    let g = f.geometry;
+    if (g.type === 'MultiPolygon') {
+      const polys = g.coordinates.map((c) => ({ type: 'Polygon', coordinates: c }));
+      g = polys.reduce((a, b) => (geoArea(b) > geoArea(a) ? b : a));
+    }
+    out[f.id] = geoCentroid(g);
+  }
+  return out;
+}
+
 function lastFinite(arr) {
   for (let i = arr.length - 1; i >= 0; i--) if (arr[i] != null && isFinite(arr[i])) return { v: arr[i], i };
   return null;
@@ -210,6 +225,16 @@ export function toScript(data) {
 
 const isMain = process.argv[1] && new URL(import.meta.url).pathname === new URL(`file://${process.argv[1]}`).pathname;
 if (isMain) {
+  if (process.argv.includes('--regeo')) {
+    // Recompute map centroids in the existing build without downloading again.
+    const src = await readFile(OUT, 'utf8');
+    const data = JSON.parse(src.match(/const D = (\{.*\});\n/)[1]);
+    const cen = centroids();
+    for (const c of data.countries) if (c.id && cen[c.id]) { c.lon = +cen[c.id][0].toFixed(2); c.lat = +cen[c.id][1].toFixed(2); }
+    await writeFile(OUT, toScript(data));
+    console.log(`Updated centroids for ${data.countries.length} countries (data from ${data.generated} unchanged)`);
+    process.exit(0);
+  }
   const i = process.argv.indexOf('--offline');
   const offlineDir = i > -1 ? new URL(process.argv[i + 1].replace(/\/?$/, '/'), `file://${process.cwd()}/`) : null;
   if (offlineDir && !existsSync(offlineDir)) { console.error(`No such folder: ${offlineDir.pathname}`); process.exit(1); }
