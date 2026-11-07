@@ -5,6 +5,14 @@
   const D = window.CS_DATA;
 
   CS.REGIONS = D.regions;
+  CS.YEARS = D.years;
+  CS.Y0 = D.years[0];
+  CS.Y1 = D.years[D.years.length - 1];
+  CS.LAST = D.years.length - 1;
+  CS.isNum = (v) => v != null && isFinite(v);
+  // Last non-missing value in a series: { v, i } or null.
+  CS.lastFinite = (arr) => { for (let i = arr.length - 1; i >= 0; i--) if (CS.isNum(arr[i])) return { v: arr[i], i }; return null; };
+  CS.firstFinite = (arr) => { for (let i = 0; i < arr.length; i++) if (CS.isNum(arr[i])) return { v: arr[i], i }; return null; };
   CS.regionColor = (r) => `var(--c${CS.REGIONS.indexOf(r) + 1})`;
   CS.css = (name) => getComputedStyle(root).getPropertyValue(name).trim();
 
@@ -36,7 +44,7 @@
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   };
   // Restore saved choices before anything paints.
-  CS.setSkin(store.get('cs-skin') || window.CS_DEFAULT_SKIN, false);
+  CS.setSkin(window.CS_DEFAULT_SKIN, false);
   const savedMode = store.get('cs-mode');
   if (savedMode && savedMode !== 'auto') root.dataset.mode = savedMode;
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => document.dispatchEvent(new CustomEvent('cs:theme')));
@@ -53,12 +61,15 @@
   CS.compact = compact;
   CS.fmtPop = (m) => compact(m * 1e6);
 
+  const safe = (f) => (v) => (v == null || !isFinite(v) ? '–' : f(v));
   CS.METRICS = {
-    life: { key: 'life', label: 'Life expectancy', short: 'Life exp.', unit: 'years', fmt: (v) => v.toFixed(1), tick: (v) => String(v), higherIsBetter: true },
-    gdp: { key: 'gdp', label: 'GDP per capita', short: 'GDP / person', unit: 'US$', fmt: (v) => '$' + compact(v), tick: (v) => '$' + compact(v), log: true, higherIsBetter: true },
-    co2: { key: 'co2', label: 'CO₂ per person', short: 'CO₂ / person', unit: 'tonnes', fmt: (v) => v.toFixed(v < 10 ? 1 : 0) + ' t', tick: (v) => String(v), higherIsBetter: false },
-    net: { key: 'net', label: 'Internet users', short: 'Internet', unit: '% of people', fmt: (v) => Math.round(v) + '%', tick: (v) => v + '%', higherIsBetter: true },
+    life: { key: 'life', label: 'Life expectancy', short: 'Life exp.', unit: 'years', fmt: safe((v) => v.toFixed(1)), tick: (v) => String(v), higherIsBetter: true },
+    gdp: { key: 'gdp', label: 'GDP per person', short: 'GDP / person', unit: 'int.-$ (PPP)', fmt: safe((v) => '$' + compact(v)), tick: (v) => '$' + compact(v), log: true, higherIsBetter: true },
+    co2: { key: 'co2', label: 'CO₂ per person', short: 'CO₂ / person', unit: 'tonnes', fmt: safe((v) => v.toFixed(v < 10 ? 1 : 0) + ' t'), tick: (v) => String(v), log: true, higherIsBetter: false },
+    net: { key: 'net', label: 'Internet users', short: 'Internet', unit: '% of people', fmt: safe((v) => Math.round(v) + '%'), tick: (v) => v + '%', higherIsBetter: true },
   };
+  // Indicator source for footers: "Life expectancy: UN WPP (2024)".
+  CS.sourceLine = (key) => { const s = (D.sources || {})[key]; return s ? s.citation : ''; };
 
   CS.median = (arr) => {
     const s = arr.filter((v) => v != null && !isNaN(v)).sort((a, b) => a - b);

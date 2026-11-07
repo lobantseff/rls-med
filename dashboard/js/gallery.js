@@ -1,4 +1,4 @@
-/* Component gallery: lettered options per component, with a picks summary. */
+/* Component kit: every chart type with its lettered options, on live OWID data. */
 (function () {
   const CS = window.CS;
   const D = window.CS_DATA;
@@ -7,7 +7,6 @@
   const M = CS.METRICS;
   const C = D.countries;
 
-  CS.skinPicker($('skin'));
   CS.modePicker($('mode'));
 
   /* ---------- helpers ---------- */
@@ -28,7 +27,9 @@
   }
   const regionLegend = (kind = 'dt', only) => (lg) => lg.replaceChildren(...CS.REGIONS.filter((r) => !only || only.includes(r)).map((r) => el('span', { class: 'k' }, el('i', { class: kind, style: `background:${CS.regionColor(r)}` }), r)));
   const regionMedian = (key) => CS.REGIONS.map((r) => ({ key: r, label: r, color: CS.regionColor(r), values: CS.medianSeries(C.filter((c) => c.region === r), key) }));
-  const top = (key, n, dir = -1) => C.slice().sort((a, b) => dir * (a[key] - b[key])).slice(0, n);
+  const L = CS.LAST, Y0 = CS.Y0, Y1 = CS.Y1;
+  const first = (arr) => (CS.firstFinite(arr) || {}).v;
+  const top = (key, n, dir = -1) => C.filter((c) => CS.isNum(c[key])).sort((a, b) => dir * (a[key] - b[key])).slice(0, n);
   const lifeOpts = { fmt: M.life.fmt, tick: M.life.tick, metricLabel: M.life.label };
   const groupsFor = (key) => CS.REGIONS.map((r) => ({ key: r, color: CS.regionColor(r), items: C.filter((c) => c.region === r).map((c) => ({ label: c.name, v: c[key] })) }));
   const bubblePts = (yi) => C.map((c) => ({ id: c.iso3, label: c.name, x: c.series.gdp[yi], y: c.series.life[yi], size: c.series.pop[yi], region: c.region }));
@@ -46,9 +47,9 @@
       id: 'tiles', title: 'Stat tiles', layout: 'tiles',
       lede: 'The headline numbers at the top of each view. All four can live in one row; the question is which treatment is the default.',
       variants: [
-        { name: 'Number + change', best: 'Fastest to scan; works for any figure.', build: (h) => { const s = CS.medianSeries(C, 'life'); h.append(CS.kpi({ label: 'Median life expectancy', value: s[23].toFixed(1), unit: 'yrs', delta: { ...CS.deltaOf(s[23], s[0], M.life), ctx: 'since 2000' } })); } },
-        { name: 'With sparkline', best: 'When the trend matters as much as the level.', build: (h) => { const s = CS.medianSeries(C, 'gdp'); h.append(CS.kpi({ variant: 'spark', label: 'Median GDP per person', value: M.gdp.fmt(s[23]), delta: { ...CS.deltaOf(s[23], s[0], M.gdp), ctx: 'since 2000' }, spark: s })); } },
-        { name: 'With meter', best: 'Shares and percentages with a natural 100%.', build: (h) => { const s = CS.medianSeries(C, 'net'); h.append(CS.kpi({ variant: 'meter', label: 'Median internet use', value: Math.round(s[23]) + '%', meter: { pct: s[23], text: `${Math.round(s[23])}% of people online, up from ${Math.round(s[0])}% in 2000` } })); } },
+        { name: 'Number + change', best: 'Fastest to scan; works for any figure.', build: (h) => { const s = CS.medianSeries(C, 'life'); h.append(CS.kpi({ label: 'Median life expectancy', value: s[L].toFixed(1), unit: 'yrs', delta: { ...CS.deltaOf(s[L], s[0], M.life), ctx: `since ${Y0}` } })); } },
+        { name: 'With sparkline', best: 'When the trend matters as much as the level.', build: (h) => { const s = CS.medianSeries(C, 'gdp'); h.append(CS.kpi({ variant: 'spark', label: 'Median GDP per person', value: M.gdp.fmt(s[L]), delta: { ...CS.deltaOf(s[L], s[0], M.gdp), ctx: `since ${Y0}` }, spark: s })); } },
+        { name: 'With meter', best: 'Shares and percentages with a natural 100%.', build: (h) => { const s = CS.medianSeries(C, 'net'); const n = CS.lastFinite(s); h.append(CS.kpi({ variant: 'meter', label: 'Median internet use', value: Math.round(n.v) + '%', meter: { pct: n.v, text: `${Math.round(n.v)}% of people online in ${D.years[n.i]}, up from ${Math.round(s[0])}% in ${Y0}` } })); } },
         { name: 'With composition', best: 'Totals that split into regions or groups.', build: (h) => { h.append(CS.kpi({ variant: 'share', label: 'People covered', value: CS.fmtPop(d3.sum(C, (c) => c.pop)), unit: `in ${C.length} countries`, share: CS.REGIONS.map((r) => ({ label: r, color: CS.regionColor(r), v: d3.sum(C.filter((c) => c.region === r), (c) => c.pop) })) })); } },
       ],
     },
@@ -56,9 +57,9 @@
       id: 'ranked', title: 'Ranked comparison',
       lede: 'Top and bottom lists by any indicator. Horizontal so country names stay readable on a phone.',
       variants: [
-        { name: 'Bars', best: 'Default. One color, value at the tip.', build: (h) => chartCard(h, { title: 'Highest life expectancy', sub: '2023, years', draw: (n, w) => CS.rankedBars(n, w, { variant: 'bar', rows: top('life', 10).map((c) => ({ label: c.short, name: c.name, value: c.life })), ...lifeOpts }) }) },
-        { name: 'Lollipop', best: 'Lighter ink; good when values are close.', build: (h) => chartCard(h, { title: 'Highest GDP per person', sub: '2023, US$', draw: (n, w) => CS.rankedBars(n, w, { variant: 'lollipop', rows: top('gdp', 10).map((c) => ({ label: c.short, name: c.name, value: c.gdp })), fmt: M.gdp.fmt, metricLabel: M.gdp.label }) }) },
-        { name: 'Region-colored + median line', best: 'When region mix is part of the story.', build: (h) => chartCard(h, { title: 'Highest CO₂ per person', sub: '2023, tonnes · line is the median of all 58', legend: regionLegend('sw'), draw: (n, w) => CS.rankedBars(n, w, { variant: 'region', rows: top('co2', 10).map((c) => ({ label: c.short, name: c.name, value: c.co2, region: c.region })), fmt: M.co2.fmt, metricLabel: M.co2.label, ref: CS.median(C.map((c) => c.co2)), refLabel: 'Median' }) }) },
+        { name: 'Bars', best: 'Default. One color, value at the tip.', build: (h) => chartCard(h, { title: 'Highest life expectancy', sub: 'Latest year, years', draw: (n, w) => CS.rankedBars(n, w, { variant: 'bar', rows: top('life', 10).map((c) => ({ label: c.short, name: c.name, value: c.life })), ...lifeOpts }) }) },
+        { name: 'Lollipop', best: 'Lighter ink; good when values are close.', build: (h) => chartCard(h, { title: 'Highest GDP per person', sub: 'Latest year, int.-$ at PPP', draw: (n, w) => CS.rankedBars(n, w, { variant: 'lollipop', rows: top('gdp', 10).map((c) => ({ label: c.short, name: c.name, value: c.gdp })), fmt: M.gdp.fmt, metricLabel: M.gdp.label }) }) },
+        { name: 'Region-colored + median line', best: 'When region mix is part of the story.', build: (h) => chartCard(h, { title: 'Highest CO₂ per person', sub: `Latest year, tonnes · line is the median of all ${C.length}`, legend: regionLegend('sw'), draw: (n, w) => CS.rankedBars(n, w, { variant: 'region', rows: top('co2', 10).map((c) => ({ label: c.short, name: c.name, value: c.co2, region: c.region })), fmt: M.co2.fmt, metricLabel: M.co2.label, ref: CS.median(C.map((c) => c.co2).filter(CS.isNum)), refLabel: 'Median' }) }) },
       ],
     },
     {
@@ -74,7 +75,7 @@
       id: 'trends', title: 'Trends over time',
       lede: 'Interactive line charts: drag or hover across the plot for a readout of every series at that year.',
       variants: [
-        { name: 'Multi-line', best: 'Up to five series, labelled at the end.', build: (h) => chartCard(h, { title: 'Life expectancy, regional medians', sub: '2000–2023', legend: regionLegend('ln'), draw: (n, w) => CS.lineChart(n, w, { variant: 'multi', series: regionMedian('life'), ...lifeOpts }) }) },
+        { name: 'Multi-line', best: 'Up to five series, labelled at the end.', build: (h) => chartCard(h, { title: 'Life expectancy, regional medians', sub: `${Y0}–${Y1}`, legend: regionLegend('ln'), draw: (n, w) => CS.lineChart(n, w, { variant: 'multi', series: regionMedian('life'), ...lifeOpts }) }) },
         {
           name: 'Highlight one', best: 'Many countries; one is the story. Tap a name.', build: (h) => {
             const st = { hl: 'KOR' };
@@ -103,24 +104,24 @@
       lede: 'Two indicators against each other. Hover finds the nearest country, so small dots are easy to hit.',
       variants: [
         {
-          name: 'Animated bubbles', best: 'The “wow” chart: press play to watch 2000→2023.', build: (h) => {
-            const st = { yi: 23, timer: null };
-            const out_ = el('output', { text: '2023' });
-            const slider = el('input', { type: 'range', id: 'g-year', min: 0, max: 23, value: 23, 'aria-label': 'Year' });
+          name: 'Animated bubbles', best: `The “wow” chart: press play to watch ${Y0}→${Y1}.`, build: (h) => {
+            const st = { yi: L, timer: null };
+            const out_ = el('output', { text: String(Y1) });
+            const slider = el('input', { type: 'range', id: 'g-year', min: 0, max: L, value: L, 'aria-label': 'Year' });
             const play = el('button', { type: 'button', class: 'btn primary', text: 'Play' });
             const controls = el('div', { class: 'row-controls' }, play, el('div', { class: 'range' }, slider, out_));
             let rec;
-            const draw = (anim) => (n, w) => CS.scatter(n, w, { ...scatterBase, variant: 'bubble', points: bubblePts(st.yi), labels: ['CHN', 'IND', 'USA', 'NGA'], yearMark: String(2000 + st.yi), animate: anim });
+            const draw = (anim) => (n, w) => CS.scatter(n, w, { ...scatterBase, variant: 'bubble', points: bubblePts(st.yi), labels: ['CHN', 'IND', 'USA', 'NGA'], yearMark: String(Y0 + st.yi), animate: anim });
             const res = chartCard(h, { title: 'Income and life expectancy', sub: 'Bubble size is population', controls, legend: regionLegend('dt'), draw: (n, w) => draw(0)(n, w) });
             rec = res.rec;
-            const step = (anim) => { out_.textContent = String(2000 + st.yi); slider.value = st.yi; draw(anim)(res.box, res.box.clientWidth); };
+            const step = (anim) => { out_.textContent = String(Y0 + st.yi); slider.value = st.yi; draw(anim)(res.box, res.box.clientWidth); };
             slider.addEventListener('input', () => { st.yi = +slider.value; step(120); });
             const stop = () => { clearInterval(st.timer); st.timer = null; play.textContent = 'Play'; };
             play.addEventListener('click', () => {
               if (st.timer) return stop();
-              if (st.yi >= 23) { st.yi = 0; step(0); }
+              if (st.yi >= L) { st.yi = 0; step(0); }
               play.textContent = 'Pause';
-              st.timer = setInterval(() => { if (st.yi >= 23) return stop(); st.yi++; step(380); }, 400);
+              st.timer = setInterval(() => { if (st.yi >= L) return stop(); st.yi++; step(380); }, 400);
             });
           },
         },
@@ -131,37 +132,37 @@
             const seg = el('div', { class: 'seg' });
             const render = () => seg.replaceChildren(...CS.REGIONS.map((r) => el('button', { type: 'button', 'aria-pressed': String(st.r === r), text: r, onclick: () => { st.r = r; render(); res.rec.redraw(); } })));
             render();
-            res = chartCard(h, { title: 'Income and life expectancy', sub: '2023', controls: seg, draw: (n, w) => CS.scatter(n, w, { ...scatterBase, variant: 'emphasis', focusRegion: st.r, points: bubblePts(23) }) });
+            res = chartCard(h, { title: 'Income and life expectancy', sub: String(Y1), controls: seg, draw: (n, w) => CS.scatter(n, w, { ...scatterBase, variant: 'emphasis', focusRegion: st.r, points: bubblePts(L) }) });
           },
         },
-        { name: 'Trend line', best: 'One clear takeaway, quantified.', build: (h) => chartCard(h, { title: 'Richer countries live longer', sub: '2023 · fitted on log income', draw: (n, w) => CS.scatter(n, w, { ...scatterBase, variant: 'trend', points: bubblePts(23), labels: ['NGA', 'JPN', 'USA'] }) }) },
+        { name: 'Trend line', best: 'One clear takeaway, quantified.', build: (h) => chartCard(h, { title: 'Richer countries live longer', sub: `${Y1} · fitted on log income`, draw: (n, w) => CS.scatter(n, w, { ...scatterBase, variant: 'trend', points: bubblePts(L), labels: ['NGA', 'JPN', 'USA'] }) }) },
       ],
     },
     {
       id: 'maps', title: 'Maps', layout: 'wide',
       lede: 'Countries on a map. Real geography reads instantly; the tile grid gives small countries equal room, which matters on phones.',
       variants: [
-        { name: 'Choropleth, smooth scale', best: 'Default world view. Pinch or ± to zoom.', build: (h) => chartCard(h, { title: 'Life expectancy', sub: '2023, years', legendBelow: true, draw: (n, w, lg) => CS.worldMap(n, w, { variant: 'choropleth', value: (c) => c.life, fmt: M.life.fmt, metricLabel: M.life.label, legendEl: lg }) }) },
-        { name: 'Choropleth, 5 classes', best: 'Easier to read exact bands.', build: (h) => chartCard(h, { title: 'GDP per person', sub: '2023, five equal-count classes', legendBelow: true, draw: (n, w, lg) => CS.worldMap(n, w, { variant: 'binned', value: (c) => c.gdp, fmt: M.gdp.fmt, metricLabel: M.gdp.label, legendEl: lg }) }) },
-        { name: 'Tile grid', best: 'Every country the same size; great on mobile.', build: (h) => chartCard(h, { title: 'Internet users', sub: '2023 · approximate geography', legendBelow: true, draw: (n, w, lg) => CS.worldMap(n, w, { variant: 'tiles', value: (c) => c.net, fmt: M.net.fmt, metricLabel: M.net.label, legendEl: lg }) }) },
-        { name: 'Bubble map', best: 'Size by population, color by indicator.', build: (h) => chartCard(h, { title: 'CO₂ per person, sized by population', sub: '2023', legendBelow: true, draw: (n, w, lg) => CS.worldMap(n, w, { variant: 'bubbles', value: (c) => c.co2, fmt: M.co2.fmt, metricLabel: M.co2.label, log: true, legendEl: lg }) }) },
+        { name: 'Choropleth, smooth scale', best: 'Default world view. Pinch or ± to zoom.', build: (h) => chartCard(h, { title: 'Life expectancy', sub: 'Latest year, years', legendBelow: true, draw: (n, w, lg) => CS.worldMap(n, w, { variant: 'choropleth', value: (c) => c.life, fmt: M.life.fmt, metricLabel: M.life.label, legendEl: lg }) }) },
+        { name: 'Choropleth, 5 classes', best: 'Easier to read exact bands.', build: (h) => chartCard(h, { title: 'GDP per person', sub: 'Latest year, five equal-count classes', legendBelow: true, draw: (n, w, lg) => CS.worldMap(n, w, { variant: 'binned', value: (c) => c.gdp, fmt: M.gdp.fmt, metricLabel: M.gdp.label, legendEl: lg }) }) },
+        { name: 'Tile grid', best: 'Every country the same size; great on mobile.', build: (h) => chartCard(h, { title: 'Internet users', sub: 'Latest year · approximate geography', legendBelow: true, draw: (n, w, lg) => CS.worldMap(n, w, { variant: 'tiles', value: (c) => c.net, fmt: M.net.fmt, metricLabel: M.net.label, legendEl: lg }) }) },
+        { name: 'Bubble map', best: 'Size by population, color by indicator.', build: (h) => chartCard(h, { title: 'CO₂ per person, sized by population', sub: 'Latest year', legendBelow: true, draw: (n, w, lg) => CS.worldMap(n, w, { variant: 'bubbles', value: (c) => c.co2, fmt: M.co2.fmt, metricLabel: M.co2.label, log: true, legendEl: lg }) }) },
       ],
     },
     {
       id: 'change', title: 'Change between two years',
       lede: 'Before and after, per country.',
       variants: [
-        { name: 'Dumbbell', best: 'Default. Shows both levels and the gap.', build: (h) => chartCard(h, { title: 'Life expectancy, 2000 → 2023', sub: '10 most populous countries', legend: (lg) => lg.replaceChildren(el('span', { class: 'k' }, el('i', { class: 'dt', style: 'background:var(--surface);box-shadow:inset 0 0 0 2px var(--muted)' }), '2000'), el('span', { class: 'k' }, el('i', { class: 'dt', style: 'background:var(--accent)' }), '2023')), draw: (n, w) => CS.change(n, w, { variant: 'dumbbell', rows: top('pop', 10).map((c) => ({ label: c.short, a: c.series.life[0], b: c.life })).sort((a, b) => b.b - a.b), ...lifeOpts, aLabel: '2000', bLabel: '2023' }) }) },
-        { name: 'Slope chart', best: 'Who overtook whom.', build: (h) => chartCard(h, { title: 'Life expectancy, 2000 → 2023', sub: 'Africa and Asia, 8 most populous', legend: regionLegend('ln', ['Africa', 'Asia']), draw: (n, w) => CS.change(n, w, { variant: 'slope', height: 320, rows: C.filter((c) => c.region === 'Africa' || c.region === 'Asia').sort((a, b) => b.pop - a.pop).slice(0, 8).map((c) => ({ label: c.short, a: c.series.life[0], b: c.life, region: c.region })), ...lifeOpts, aLabel: '2000', bLabel: '2023' }) }) },
-        { name: 'Change bars', best: 'Only the change matters; sign at a glance.', build: (h) => chartCard(h, { title: 'CO₂ per person, change since 2000', sub: 'Tonnes · warm = more emissions · 10 most populous', draw: (n, w) => CS.change(n, w, { variant: 'delta', rows: top('pop', 10).map((c) => ({ label: c.short, a: c.series.co2[0], b: c.co2 })).sort((a, b) => (b.b - b.a) - (a.b - a.a)), fmt: M.co2.fmt, dfmt: (v) => Math.abs(v) < 10 ? v.toFixed(1) : v.toFixed(0), invert: true, aLabel: '2000', bLabel: '2023' }) }) },
+        { name: 'Dumbbell', best: 'Default. Shows both levels and the gap.', build: (h) => chartCard(h, { title: `Life expectancy, ${Y0} → latest`, sub: '10 most populous countries', legend: (lg) => lg.replaceChildren(el('span', { class: 'k' }, el('i', { class: 'dt', style: 'background:var(--surface);box-shadow:inset 0 0 0 2px var(--muted)' }), String(Y0)), el('span', { class: 'k' }, el('i', { class: 'dt', style: 'background:var(--accent)' }), 'Latest')), draw: (n, w) => CS.change(n, w, { variant: 'dumbbell', rows: top('pop', 10).map((c) => ({ label: c.short, a: first(c.series.life), b: c.life })).sort((a, b) => b.b - a.b), ...lifeOpts, aLabel: String(Y0), bLabel: 'Latest' }) }) },
+        { name: 'Slope chart', best: 'Who overtook whom.', build: (h) => chartCard(h, { title: `Life expectancy, ${Y0} → latest`, sub: 'Africa and Asia, 8 most populous', legend: regionLegend('ln', ['Africa', 'Asia']), draw: (n, w) => CS.change(n, w, { variant: 'slope', height: 320, rows: C.filter((c) => c.region === 'Africa' || c.region === 'Asia').sort((a, b) => b.pop - a.pop).slice(0, 8).map((c) => ({ label: c.short, a: first(c.series.life), b: c.life, region: c.region })), ...lifeOpts, aLabel: String(Y0), bLabel: 'Latest' }) }) },
+        { name: 'Change bars', best: 'Only the change matters; sign at a glance.', build: (h) => chartCard(h, { title: `CO₂ per person, change since ${Y0}`, sub: 'Tonnes · warm = more emissions · 10 most populous', draw: (n, w) => CS.change(n, w, { variant: 'delta', rows: top('pop', 10).map((c) => ({ label: c.short, a: first(c.series.co2), b: c.co2 })).sort((a, b) => (b.b - b.a) - (a.b - a.a)), fmt: M.co2.fmt, dfmt: (v) => Math.abs(v) < 10 ? v.toFixed(1) : v.toFixed(0), invert: true, aLabel: String(Y0), bLabel: 'Latest' }) }) },
       ],
     },
     {
       id: 'heatmap', title: 'Heatmap (country × year)', layout: 'wide',
       lede: 'Dense history for many countries at once.',
       variants: [
-        { name: 'Level', best: 'Where each country stands each year.', build: (h) => chartCard(h, { title: 'Life expectancy', sub: '2000–2023, years', legendBelow: true, draw: (n, w, lg) => CS.heatmap(n, w, { variant: 'seq', rows: top('pop', 12).map((c) => ({ label: c.short, values: c.series.life })), ...lifeOpts, legendEl: lg }) }) },
-        { name: 'Change since 2000', best: 'Gains and losses; two-sided color.', build: (h) => chartCard(h, { title: 'CO₂ per person, change since 2000', sub: 'Tonnes per person · warm = more emissions', legendBelow: true, draw: (n, w, lg) => CS.heatmap(n, w, { variant: 'div', rows: top('pop', 12).map((c) => ({ label: c.short, values: c.series.co2 })), fmt: M.co2.fmt, dfmt: (v) => v.toFixed(1), invert: true, metricLabel: M.co2.label, legendEl: lg }) }) },
+        { name: 'Level', best: 'Where each country stands each year.', build: (h) => chartCard(h, { title: 'Life expectancy', sub: `${Y0}–${Y1}, years`, legendBelow: true, draw: (n, w, lg) => CS.heatmap(n, w, { variant: 'seq', rows: top('pop', 12).map((c) => ({ label: c.short, values: c.series.life })), ...lifeOpts, legendEl: lg }) }) },
+        { name: 'Change since 2000', best: 'Gains and losses; two-sided color.', build: (h) => chartCard(h, { title: `CO₂ per person, change since ${Y0}`, sub: 'Tonnes per person · warm = more emissions', legendBelow: true, draw: (n, w, lg) => CS.heatmap(n, w, { variant: 'div', rows: top('pop', 12).map((c) => ({ label: c.short, values: c.series.co2 })), fmt: M.co2.fmt, dfmt: (v) => v.toFixed(1), invert: true, metricLabel: M.co2.label, legendEl: lg }) }) },
       ],
     },
     {
@@ -189,8 +190,8 @@
         } },
         { name: 'Year slider + search', best: 'Time travel and jump-to-country.', build: (h) => {
           const card = el('article', { class: 'card' });
-          const o = el('output', { text: '2023' });
-          const r = el('input', { type: 'range', id: 'g-year2', min: 2000, max: 2023, value: 2023, 'aria-label': 'Year', oninput: (e) => { o.textContent = e.target.value; } });
+          const o = el('output', { text: String(Y1) });
+          const r = el('input', { type: 'range', id: 'g-year2', min: Y0, max: Y1, value: Y1, 'aria-label': 'Year', oninput: (e) => { o.textContent = e.target.value; } });
           const list = el('datalist', { id: 'g-countries' }, ...C.map((c) => el('option', { value: c.name })));
           card.append(el('div', { class: 'row-controls' }, el('button', { type: 'button', class: 'btn', text: '▶ Play' }), el('div', { class: 'range' }, r, o)));
           card.append(el('input', { class: 'search', id: 'g-search', type: 'search', list: 'g-countries', placeholder: 'Find a country', 'aria-label': 'Find a country' }), list);
@@ -208,34 +209,7 @@
     },
   ];
 
-  /* ---------- picks ---------- */
-  let picks = {};
-  try { picks = JSON.parse(CS.store.get('cs-picks') || '{}') || {}; } catch (e) { picks = {}; }
   const LETTERS = 'ABCDEFG';
-  function picksText() {
-    const parts = [`Theme: ${window.CS_SKINS[CS.getSkin()].name}`];
-    SECTIONS.forEach((s) => { if (picks[s.id] != null) parts.push(`${s.title.replace(/ \(.*\)/, '')}: ${LETTERS[picks[s.id]]}`); });
-    return parts.join(' · ');
-  }
-  function renderPicks() {
-    const t = $('picks-text');
-    t.replaceChildren();
-    const n = Object.keys(picks).length;
-    t.append(el('b', { text: n ? `${n} of ${SECTIONS.length} picked · ` : 'Nothing picked yet · ' }), picksText());
-    document.querySelectorAll('.toc a').forEach((a) => a.classList.toggle('done', picks[a.dataset.id] != null));
-  }
-  $('copy').addEventListener('click', () => {
-    const txt = picksText();
-    const btn = $('copy');
-    const done = () => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy picks'; }, 1600); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, fallback); else fallback();
-    function fallback() {
-      const range = document.createRange(); range.selectNodeContents($('picks-text'));
-      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
-      btn.textContent = 'Selected, press copy';
-    }
-  });
-  document.addEventListener('cs:theme', renderPicks);
 
   /* ---------- render ---------- */
   const toc = $('toc');
@@ -248,27 +222,14 @@
     sec.append(grid);
     host.append(sec);
     s.variants.forEach((v, i) => {
-      const wrap = el('div', { class: 'variant' + (picks[s.id] === i ? ' picked' : '') });
-      const pickBtn = el('button', { type: 'button', class: 'pick', 'aria-pressed': String(picks[s.id] === i), text: picks[s.id] === i ? 'Picked' : 'Pick' });
-      pickBtn.addEventListener('click', () => {
-        if (picks[s.id] === i) delete picks[s.id]; else picks[s.id] = i;
-        CS.store.set('cs-picks', JSON.stringify(picks));
-        grid.querySelectorAll('.variant').forEach((vv, k) => {
-          vv.classList.toggle('picked', picks[s.id] === k);
-          const b = vv.querySelector('.pick');
-          b.setAttribute('aria-pressed', String(picks[s.id] === k));
-          b.textContent = picks[s.id] === k ? 'Picked' : 'Pick';
-        });
-        renderPicks();
-      });
-      wrap.append(el('div', { class: 'vhead' }, el('div', { class: 'vname' }, el('span', { class: 'vletter', text: LETTERS[i] }), el('span', { class: 'vtitle', text: v.name })), pickBtn));
+      const wrap = el('div', { class: 'variant' });
+      wrap.append(el('div', { class: 'vhead' }, el('div', { class: 'vname' }, el('span', { class: 'vletter', text: LETTERS[i] }), el('span', { class: 'vtitle', text: v.name }))));
       wrap.append(el('p', { class: 'vbest', text: v.best }));
       grid.append(wrap);
       v.build(wrap);
     });
   });
-  renderPicks();
 
-  $('foot').replaceChildren(el('span', { text: D.note + ' ' }), el('a', { class: 'nextlink', href: (window.CS_LINKS || {}).themes || 'index.html', text: 'Back to the theme look book' }));
+  $('foot').replaceChildren(el('span', { text: `${D.note} Latest available year per country. Built ${D.generated}. ` }), el('a', { class: 'nextlink', href: (window.CS_LINKS || {}).themes || 'index.html', text: 'Open the world overview' }));
   if (location.hash) { const t = document.getElementById(location.hash.slice(1)); if (t) setTimeout(() => t.scrollIntoView(), 50); }
 })();

@@ -6,6 +6,7 @@
   const NS = 'http://www.w3.org/2000/svg';
 
   const numFont = () => CS.css('--font-num');
+  function empty(el, msg) { el.replaceChildren(CS.el('p', { class: 'cs-empty', text: msg })); }
   const tickSize = 11;
 
   function hitTarget(sel, onEnter) {
@@ -53,7 +54,8 @@
    * o.ref (number), o.refLabel
    * ==================================================================== */
   CS.rankedBars = (el, w, o) => {
-    const rows = o.rows;
+    const rows = o.rows.filter((r) => CS.isNum(r.value));
+    if (!rows.length) return empty(el, 'No data for this selection');
     const rowH = o.rowH || 28;
     const barH = 14;
     const top = o.ref != null ? 24 : 4;
@@ -120,6 +122,8 @@
   }
   CS.distribution = (el, w, o) => {
     const v = o.variant || 'box';
+    o = { ...o, groups: o.groups.map((g) => ({ ...g, items: g.items.filter((d) => CS.isNum(d.v)) })).filter((g) => g.items.length) };
+    if (!o.groups.length) return empty(el, 'No data for this selection');
     const rowH = v === 'rain' ? 70 : v === 'dots' ? 52 : 42;
     const labelW = Math.ceil(Math.max(...o.groups.map((g) => CS.textW(g.key, 12)))) + 14;
     const top = 6, bottom = 26, right = 14;
@@ -208,12 +212,13 @@
     const v = o.variant || 'multi';
     const series = o.series;
     const h = o.height || (w < 520 ? 230 : 290);
-    const allVals = series.flatMap((s) => s.values);
+    const allVals = series.flatMap((s) => s.values).filter(CS.isNum);
+    if (!allVals.length) return empty(el, 'No data for this selection');
     const y0 = o.log ? d3.scaleLog().domain(d3.extent(allVals)).nice() : d3.scaleLinear().domain([o.zero ? 0 : d3.min(allVals), d3.max(allVals)]).nice();
     const ticksY = o.log ? logTicks(y0, 300) : y0.ticks(5);
     const left = Math.ceil(Math.max(...ticksY.map((t) => CS.textW((o.tick || o.fmt)(t), tickSize, numFont())))) + 12;
     const showEnd = v !== 'area' && w >= 420;
-    const labelled = v === 'emphasis' ? series.filter((s) => s.key === o.highlight) : series;
+    const labelled = (v === 'emphasis' ? series.filter((s) => s.key === o.highlight) : series).filter((s) => CS.lastFinite(s.values));
     const endW = showEnd ? Math.ceil(Math.max(...labelled.map((s) => CS.textW(s.label, 12)))) + 22 : 12;
     const m = { t: 12, r: endW, b: 28, l: left };
     const x = d3.scaleLinear([YEARS[0], YEARS[YEARS.length - 1]], [m.l, w - m.r]);
@@ -225,13 +230,13 @@
     ax.append('line').attr('x1', m.l).attr('x2', w - m.r).attr('y1', h - m.b + 0.5).attr('y2', h - m.b + 0.5).attr('stroke', 'var(--axis)');
     ax.selectAll('text').data(xt).join('text').attr('x', (d) => x(d)).attr('y', h - m.b + 18).attr('text-anchor', 'middle').attr('class', 'cs-tick').text((d) => d);
 
-    const line = d3.line().x((d, i) => x(YEARS[i])).y((d) => y(d)).curve(d3.curveMonotoneX);
+    const line = d3.line().defined(CS.isNum).x((d, i) => x(YEARS[i])).y((d) => y(d)).curve(d3.curveMonotoneX);
     const order = v === 'emphasis' ? [...series.filter((s) => s.key !== o.highlight), ...series.filter((s) => s.key === o.highlight)] : series;
     const colorOf = (s) => (v === 'emphasis' ? (s.key === o.highlight ? 'var(--accent)' : 'var(--axis)') : s.color);
 
     if (v === 'area') {
       const s = series[0];
-      const area = d3.area().x((d, i) => x(YEARS[i])).y0(h - m.b).y1((d) => y(d)).curve(d3.curveMonotoneX);
+      const area = d3.area().defined(CS.isNum).x((d, i) => x(YEARS[i])).y0(h - m.b).y1((d) => y(d)).curve(d3.curveMonotoneX);
       svg.append('path').attr('d', area(s.values)).attr('fill', s.color).attr('fill-opacity', 0.12);
     }
     const paths = svg.append('g').selectAll('path').data(order).join('path')
@@ -246,9 +251,9 @@
 
     // End markers + direct labels
     const last = YEARS.length - 1;
-    const ends = labelled.map((s) => ({ s, y: y(s.values[last]), ty: y(s.values[last]) }));
+    const ends = labelled.map((s) => { const lf = CS.lastFinite(s.values); return { s, i: lf.i, y: y(lf.v), ty: y(lf.v) }; });
     svg.append('g').selectAll('circle').data(ends).join('circle')
-      .attr('cx', x(YEARS[last])).attr('cy', (d) => d.y).attr('r', 4.5)
+      .attr('cx', (d) => x(YEARS[d.i])).attr('cy', (d) => d.y).attr('r', 4.5)
       .attr('fill', (d) => colorOf(d.s)).attr('stroke', 'var(--surface)').attr('stroke-width', 2);
     if (showEnd) {
       ends.sort((a, b) => a.y - b.y);
@@ -274,9 +279,9 @@
       const i = Math.max(0, Math.min(last, Math.round(x.invert(px) - YEARS[0])));
       const cx = x(YEARS[i]);
       cross.style('display', null).attr('x1', cx).attr('x2', cx);
-      dots.style('display', null).selectAll('circle').data(order).join('circle').attr('cx', cx).attr('cy', (s) => y(s.values[i]))
+      dots.style('display', null).selectAll('circle').data(order.filter((s) => CS.isNum(s.values[i]))).join('circle').attr('cx', cx).attr('cy', (s) => y(s.values[i]))
         .attr('r', 4).attr('fill', colorOf).attr('stroke', 'var(--surface)').attr('stroke-width', 2);
-      const rows = series.map((s) => ({ value: o.fmt(s.values[i]), label: s.label, color: colorOf(s), _v: s.values[i] }))
+      const rows = series.map((s) => ({ value: o.fmt(s.values[i]), label: s.label, color: colorOf(s), _v: CS.isNum(s.values[i]) ? s.values[i] : -Infinity }))
         .sort((a, b) => b._v - a._v);
       CS.showTip(e, String(YEARS[i]), v === 'emphasis' ? rows.filter((r, k) => k < 6 || series.find((s) => s.label === r.label).key === o.highlight) : rows);
     }
@@ -288,14 +293,14 @@
     const cols = w < 480 ? 2 : w < 820 ? 3 : Math.min(5, o.series.length);
     const grid = CS.el('div', { class: 'cs-small-grid', style: `grid-template-columns:repeat(${cols},minmax(0,1fr))` });
     el.append(grid);
-    const all = o.series.flatMap((s) => s.values);
-    const yd = o.log ? d3.extent(all) : [d3.min(all), d3.max(all)];
+    const all = o.series.flatMap((s) => s.values).filter(CS.isNum);
+    const yd = d3.extent(all);
     const gap = 12;
     const pw = Math.floor((w - gap * (cols - 1)) / cols);
     const ph = 96;
     o.series.forEach((s) => {
       const cell = CS.el('div', { class: 'cs-small' });
-      const head = CS.el('div', { class: 'cs-small-head' }, CS.el('span', { class: 'cs-small-name', text: s.label }), CS.el('span', { class: 'cs-small-val', text: o.fmt(s.values[s.values.length - 1]) }));
+      const head = CS.el('div', { class: 'cs-small-head' }, CS.el('span', { class: 'cs-small-name', text: s.label }), CS.el('span', { class: 'cs-small-val', text: o.fmt((CS.lastFinite(s.values) || {}).v) }));
       cell.append(head);
       const box = CS.el('div');
       cell.append(box);
@@ -306,13 +311,14 @@
       const svg = CS.svg(box, pw, ph, s.label);
       y.ticks(3).forEach((t) => svg.append('line').attr('x1', m.l).attr('x2', pw - m.r).attr('y1', Math.round(y(t)) + 0.5).attr('y2', Math.round(y(t)) + 0.5).attr('stroke', 'var(--grid)'));
       svg.append('line').attr('x1', m.l).attr('x2', pw - m.r).attr('y1', ph - m.b + 0.5).attr('y2', ph - m.b + 0.5).attr('stroke', 'var(--axis)');
-      [2000, 2023].forEach((yr, k) => svg.append('text').attr('x', x(yr)).attr('y', ph - 4).attr('text-anchor', k ? 'end' : 'start').attr('class', 'cs-tick').text(yr));
-      const area = d3.area().x((d, i) => x(YEARS[i])).y0(ph - m.b).y1((d) => y(d)).curve(d3.curveMonotoneX);
-      const line = d3.line().x((d, i) => x(YEARS[i])).y((d) => y(d)).curve(d3.curveMonotoneX);
+      [CS.Y0, CS.Y1].forEach((yr, k) => svg.append('text').attr('x', x(yr)).attr('y', ph - 4).attr('text-anchor', k ? 'end' : 'start').attr('class', 'cs-tick').text(yr));
+      const area = d3.area().defined(CS.isNum).x((d, i) => x(YEARS[i])).y0(ph - m.b).y1((d) => y(d)).curve(d3.curveMonotoneX);
+      const line = d3.line().defined(CS.isNum).x((d, i) => x(YEARS[i])).y((d) => y(d)).curve(d3.curveMonotoneX);
       svg.append('path').attr('d', area(s.values)).attr('fill', s.color).attr('fill-opacity', 0.12);
       svg.append('path').attr('d', line(s.values)).attr('fill', 'none').attr('stroke', s.color).attr('stroke-width', 2);
       const L = s.values.length - 1;
-      svg.append('circle').attr('cx', x(YEARS[L])).attr('cy', y(s.values[L])).attr('r', 4).attr('fill', s.color).attr('stroke', 'var(--surface)').attr('stroke-width', 2);
+      const lf = CS.lastFinite(s.values);
+      if (lf) svg.append('circle').attr('cx', x(YEARS[lf.i])).attr('cy', y(lf.v)).attr('r', 4).attr('fill', s.color).attr('stroke', 'var(--surface)').attr('stroke-width', 2);
       const cross = svg.append('line').attr('y1', m.t).attr('y2', ph - m.b).attr('stroke', 'var(--ink-2)').style('display', 'none');
       svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', pw - m.l - m.r).attr('height', ph - m.b).attr('fill', 'transparent')
         .attr('data-tip-target', '').style('touch-action', 'pan-y')
@@ -334,7 +340,7 @@
   CS.scatter = (el, w, o) => {
     const v = o.variant || 'bubble';
     const h = o.height || Math.round(Math.min(440, Math.max(260, w * 0.6)));
-    const pts = o.points.slice().sort((a, b) => b.size - a.size);
+    const pts = o.points.filter((d) => CS.isNum(d.x) && d.x > 0 && CS.isNum(d.y) && CS.isNum(d.size)).sort((a, b) => b.size - a.size);
     const xd = o.xDomain || d3.extent(pts, (d) => d.x);
     const yd = o.yDomain || d3.extent(pts, (d) => d.y);
     const x0 = o.xLog ? d3.scaleLog().domain([xd[0] * 0.85, xd[1] * 1.15]) : d3.scaleLinear().domain(xd).nice();
@@ -466,9 +472,10 @@
     if (v === 'tiles') return tileMap(el, w, o);
     const { features, land } = geo();
     const D = window.CS_DATA;
-    const vals = D.countries.map(o.value);
-    const color = CS.colorScale(o, vals);
-    if (o.legendEl) CS.mapLegend(o.legendEl, color, o);
+    const vals = D.countries.map(o.value).filter((v) => CS.isNum(v) && (!o.log || v > 0));
+    const scale = CS.colorScale(o, vals);
+    const color = (v) => (CS.isNum(v) && (!o.log || v > 0) ? scale(v) : 'var(--surface-2)');
+    if (o.legendEl) CS.mapLegend(o.legendEl, scale, o);
     const h = Math.round(w / 2.1);
     const proj = d3.geoEqualEarth().fitExtent([[2, 2], [w - 2, h - 2]], { type: 'Sphere' });
     const path = d3.geoPath(proj);
@@ -482,9 +489,8 @@
     if (v === 'bubbles') {
       g.append('path').attr('d', path(land)).attr('fill', 'var(--surface-2)').attr('stroke', 'var(--axis)').attr('stroke-width', 0.4);
       const rs = d3.scaleSqrt([0, d3.max(D.countries, (c) => c.pop)], [2, w < 500 ? 18 : 30]);
-      const items = D.countries.map((c) => {
-        const f = features.find((f) => f.id === c.id);
-        const [cx, cy] = proj(d3.geoCentroid(f));
+      const items = D.countries.filter((c) => c.lat != null && CS.isNum(c.pop)).map((c) => {
+        const [cx, cy] = proj([c.lon, c.lat]);
         return { c, cx, cy, r: rs(c.pop) };
       }).sort((a, b) => b.r - a.r);
       const dots = g.selectAll('circle').data(items).join('circle')
@@ -500,7 +506,7 @@
       hitTarget(shapes, function (e, f) {
         const c = D.byId[f.id];
         d3.select(this).raise().attr('stroke', 'var(--ink)').attr('stroke-width', 1.2);
-        CS.showTip(e, c ? c.name : f.properties.name, c ? [{ value: o.fmt(o.value(c)), label: o.metricLabel, color: color(o.value(c)), key: 'dot' }, { value: c.region, label: '' }] : [{ value: 'No data', label: '' }]);
+        CS.showTip(e, c ? c.name : f.properties.name, c && CS.isNum(o.value(c)) ? [{ value: o.fmt(o.value(c)), label: o.metricLabel, color: color(o.value(c)), key: 'dot' }, { value: c.region, label: '' }] : [{ value: 'No data', label: '' }]);
       });
       shapes.on('pointerleave.s blur.s', function () { d3.select(this).attr('stroke', 'var(--surface)').attr('stroke-width', 0.6); });
     }
@@ -521,17 +527,17 @@
   function tileMap(el, w, o) {
     const D = window.CS_DATA;
     if (!tileLayout) {
-      const { features } = geo();
-      const proj = d3.geoEqualEarth().fitWidth(26, { type: 'Sphere' });
+      const placed = D.countries.filter((c) => c.lat != null);
+      const proj = d3.geoEqualEarth().fitWidth(Math.round(Math.max(26, Math.sqrt(placed.length) * 2.6)), { type: 'Sphere' });
       const taken = new Map();
-      const items = D.countries.slice().sort((a, b) => b.pop - a.pop).map((c) => {
-        const [px, py] = proj(d3.geoCentroid(features.find((f) => f.id === c.id)));
+      const items = placed.slice().sort((a, b) => b.pop - a.pop).map((c) => {
+        const [px, py] = proj([c.lon, c.lat]);
         return { c, tx: px, ty: py * 1.25 };
       });
       // Place largest countries first, then spiral to the nearest free cell.
       for (const it of items) {
         let best = null;
-        for (let rad = 0; rad < 8 && !best; rad++) {
+        for (let rad = 0; rad < 20 && !best; rad++) {
           let bd = Infinity;
           for (let dx = -rad; dx <= rad; dx++) for (let dy = -rad; dy <= rad; dy++) {
             if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue;
@@ -548,9 +554,10 @@
       items.forEach((d) => { d.col -= c0; d.row -= r0; });
       tileLayout = { items, cols: d3.max(items, (d) => d.col) + 1, rows: d3.max(items, (d) => d.row) + 1 };
     }
-    const vals = D.countries.map(o.value);
-    const color = CS.colorScale({ ...o, variant: 'tiles' }, vals);
-    if (o.legendEl) CS.mapLegend(o.legendEl, color, o);
+    const vals = D.countries.map(o.value).filter(CS.isNum);
+    const scale = CS.colorScale({ ...o, variant: 'tiles' }, vals);
+    const color = (v) => (CS.isNum(v) ? scale(v) : CS.css('--surface-2'));
+    if (o.legendEl) CS.mapLegend(o.legendEl, scale, o);
     const gap = 3;
     const cell = Math.min(46, Math.floor((w + gap) / tileLayout.cols));
     const W = tileLayout.cols * cell, H = tileLayout.rows * cell;
@@ -575,6 +582,8 @@
    * ==================================================================== */
   CS.change = (el, w, o) => {
     const v = o.variant || 'dumbbell';
+    o = { ...o, rows: o.rows.filter((r) => CS.isNum(r.a) && CS.isNum(r.b)) };
+    if (!o.rows.length) return empty(el, 'No data for this selection');
     if (v === 'slope') return slope(el, w, o);
     const rows = o.rows;
     const rowH = 26;
@@ -660,13 +669,13 @@
    * ==================================================================== */
   CS.heatmap = (el, w, o) => {
     const v = o.variant || 'seq';
-    const rows = o.rows.map((r) => ({ ...r, cells: v === 'div' ? r.values.map((x) => x - r.values[0]) : r.values }));
+    const rows = o.rows.map((r) => { const b = CS.firstFinite(r.values); return { ...r, cells: v === 'div' ? r.values.map((x) => (CS.isNum(x) && b ? x - b.v : null)) : r.values }; });
     const labelW = Math.ceil(Math.max(...rows.map((r) => CS.textW(r.label, 12)))) + 12;
     const top = 20, gap = 2;
     const cw = (w - labelW) / YEARS.length;
     const rh = 20;
     const h = top + rows.length * rh;
-    const all = rows.flatMap((r) => r.cells);
+    const all = rows.flatMap((r) => r.cells).filter(CS.isNum);
     let color;
     if (v === 'div') {
       const m = d3.max(all, Math.abs);
@@ -683,10 +692,11 @@
     g.append('text').attr('x', labelW - 8).attr('y', rh / 2 + 3).attr('text-anchor', 'end').attr('class', 'cs-label').text((d) => d.label);
     const cells = g.selectAll('rect').data((d) => d.cells.map((c, i) => ({ r: d, i, c }))).join('rect')
       .attr('x', (d) => labelW + d.i * cw).attr('y', 0).attr('width', Math.max(1, cw - gap)).attr('height', rh - gap)
-      .attr('rx', Math.min(3, (cw - gap) / 3)).attr('fill', (d) => color(d.c));
+      .attr('rx', Math.min(3, (cw - gap) / 3)).attr('fill', (d) => (CS.isNum(d.c) ? color(d.c) : 'var(--surface-2)'));
     hitTarget(cells, function (e, d) {
+      if (!CS.isNum(d.c)) return CS.showTip(e, `${d.r.label} · ${YEARS[d.i]}`, [{ value: 'No data', label: '' }]);
       CS.showTip(e, `${d.r.label} · ${YEARS[d.i]}`, [
-        { value: v === 'div' ? (d.c >= 0 ? '+' : '') + o.dfmt(d.c) : o.fmt(d.c), label: v === 'div' ? 'since 2000' : o.metricLabel, color: color(d.c), key: 'dot' },
+        { value: v === 'div' ? (d.c >= 0 ? '+' : '') + o.dfmt(d.c) : o.fmt(d.c), label: v === 'div' ? `since ${YEARS[0]}` : o.metricLabel, color: color(d.c), key: 'dot' },
         ...(v === 'div' ? [{ value: o.fmt(d.r.values[d.i]), label: o.metricLabel }] : []),
       ]);
     });
@@ -711,10 +721,10 @@
     svg.setAttribute('class', 'cs-spark'); svg.setAttribute('aria-hidden', 'true');
     const s = d3.select(svg);
     const color = opt.color || 'var(--accent)';
-    if (opt.area !== false) s.append('path').attr('d', d3.area().x((d, i) => x(i)).y0(h).y1((d) => y(d)).curve(d3.curveMonotoneX)(values)).attr('fill', color).attr('fill-opacity', 0.12);
-    s.append('path').attr('d', d3.line().x((d, i) => x(i)).y((d) => y(d)).curve(d3.curveMonotoneX)(values)).attr('fill', 'none').attr('stroke', opt.muted ? 'var(--muted)' : color).attr('stroke-width', 1.75).attr('stroke-linecap', 'round');
-    const L = values.length - 1;
-    s.append('circle').attr('cx', x(L)).attr('cy', y(values[L])).attr('r', 3).attr('fill', color).attr('stroke', 'var(--surface)').attr('stroke-width', 1.5);
+    if (opt.area !== false) s.append('path').attr('d', d3.area().defined(CS.isNum).x((d, i) => x(i)).y0(h).y1((d) => y(d)).curve(d3.curveMonotoneX)(values)).attr('fill', color).attr('fill-opacity', 0.12);
+    s.append('path').attr('d', d3.line().defined(CS.isNum).x((d, i) => x(i)).y((d) => y(d)).curve(d3.curveMonotoneX)(values)).attr('fill', 'none').attr('stroke', opt.muted ? 'var(--muted)' : color).attr('stroke-width', 1.75).attr('stroke-linecap', 'round');
+    const lf = CS.lastFinite(values);
+    if (lf) s.append('circle').attr('cx', x(lf.i)).attr('cy', y(lf.v)).attr('r', 3).attr('fill', color).attr('stroke', 'var(--surface)').attr('stroke-width', 1.5);
     return svg;
   };
 
@@ -726,6 +736,7 @@
     const svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`); svg.setAttribute('width', w); svg.setAttribute('height', h); svg.setAttribute('aria-hidden', 'true');
     values.forEach((v, i) => {
+      if (!CS.isNum(v)) return;
       const p = document.createElementNS(NS, 'path');
       p.setAttribute('d', CS.barPathV(i * (bw + gap), h, y(v), bw, 1.5));
       p.setAttribute('fill', i === n - 1 ? 'var(--accent)' : 'var(--axis)');

@@ -1,38 +1,20 @@
-/* Theme look book: one overview dashboard rendered in the selected skin. */
+/* World overview dashboard. One filter row scopes every chart. */
 (function () {
   const CS = window.CS;
   const D = window.CS_DATA;
   const el = CS.el;
   const $ = (id) => document.getElementById(id);
+  const Y0 = CS.Y0, Y1 = CS.Y1;
 
   const state = { metric: 'life', regions: new Set(CS.REGIONS) };
   const picked = () => D.countries.filter((c) => state.regions.has(c.region));
+  const withValue = (cs) => cs.filter((c) => CS.isNum(c[state.metric]));
 
-  /* ---- theme cards ---- */
   CS.modePicker($('mode'));
-  const skinsHost = $('skins');
-  function renderSkins() {
-    const dark = CS.isDark();
-    skinsHost.replaceChildren(...Object.entries(window.CS_SKINS).map(([id, s], i) => {
-      const p = dark ? s.dark : s.light;
-      return el('button', {
-        type: 'button', class: 'skin', 'aria-pressed': String(CS.getSkin() === id),
-        onclick: () => CS.setSkin(id),
-      },
-      el('div', { class: 'skin-top' },
-        el('span', { class: 'skin-name', style: `font-family:${s.shape['font-display']};font-weight:${s.shape['display-weight']};letter-spacing:${s.shape['display-tracking']}`, text: s.name }),
-        el('span', { class: 'skin-letter', text: 'Theme ' + 'ABCD'[i] })),
-      el('div', { class: 'swatches', 'aria-hidden': 'true' },
-        el('i', { class: 'bg', style: `background:${p.page}` }), el('i', { class: 'bg', style: `background:${p.surface}` }),
-        ...['c1', 'c2', 'c3', 'c4', 'c5'].map((k) => el('i', { style: `background:${p[k]}` }))),
-      el('span', { class: 'skin-blurb', text: s.blurb }));
-    }));
-    $('demo-eyebrow').textContent = `Preview · ${window.CS_SKINS[CS.getSkin()].name}, ${dark ? 'dark' : 'light'}`;
-  }
-  renderSkins();
-  document.addEventListener('cs:theme', renderSkins);
+  $('eyebrow').textContent = `World overview · ${Y0}–${Y1}`;
+  $('lede').textContent = `${D.countries.length} countries with at least ${D.minPop / 1e6} million people. Pick an indicator and regions; every chart below follows the same selection.`;
 
-  /* ---- filters (one row, scopes everything below) ---- */
+  /* ---- filters ---- */
   const fb = $('filters');
   CS.metricSeg(fb, state, update);
   CS.regionChips(fb, state.regions, update);
@@ -49,7 +31,7 @@
 
   add('bars', (n, w) => {
     const m = CS.METRICS[state.metric];
-    const cs = picked();
+    const cs = withValue(picked());
     const top = cs.slice().sort((a, b) => b[state.metric] - a[state.metric]).slice(0, 10);
     CS.rankedBars(n, w, { variant: 'bar', rows: top.map((c) => ({ id: c.iso3, label: c.short, name: c.name, value: c[state.metric], region: c.region })), fmt: m.fmt, metricLabel: m.label, ref: CS.median(cs.map((c) => c[state.metric])), refLabel: 'Median' });
   });
@@ -71,43 +53,51 @@
   add('scatter', (n, w) => {
     const cs = picked();
     $('sc-legend').replaceChildren(...CS.REGIONS.filter((r) => state.regions.has(r)).map((r) => el('span', { class: 'k' }, el('i', { class: 'dt', style: `background:${CS.regionColor(r)}` }), r)));
+    const ok = D.countries.filter((c) => CS.isNum(c.gdp) && CS.isNum(c.life));
     CS.scatter(n, w, {
       variant: 'bubble', points: cs.map((c) => ({ id: c.iso3, label: c.name, x: c.gdp, y: c.life, size: c.pop, region: c.region })),
       xLog: true, xFmt: CS.METRICS.gdp.fmt, xTick: CS.METRICS.gdp.tick, yFmt: (v) => v.toFixed(1) + ' yrs', yTick: (v) => v,
-      xLabel: 'GDP per person (log scale) →', xLabelShort: 'GDP / person', yLabel: 'Life expectancy', sizeFmt: CS.fmtPop,
-      xDomain: d3.extent(D.countries, (c) => c.gdp), yDomain: d3.extent(D.countries, (c) => c.life), sizeMax: d3.max(D.countries, (c) => c.pop),
-      labels: ['CHN', 'IND', 'USA', 'NGA', 'JPN', 'NOR'],
+      xLabel: 'GDP per person, PPP (log scale) →', xLabelShort: 'GDP / person', yLabel: 'Life expectancy', sizeFmt: CS.fmtPop,
+      xDomain: d3.extent(ok, (c) => c.gdp), yDomain: d3.extent(ok, (c) => c.life), sizeMax: d3.max(D.countries, (c) => c.pop),
+      labels: ['CHN', 'IND', 'USA', 'NGA', 'JPN'],
     });
   });
 
   add('change', (n, w) => {
     const m = CS.METRICS[state.metric];
-    const rows = picked().sort((a, b) => b.pop - a.pop).slice(0, 10).map((c) => ({ label: c.short, a: c.series[state.metric][0], b: c[state.metric], region: c.region }))
+    const rows = withValue(picked()).sort((a, b) => b.pop - a.pop).slice(0, 10)
+      .map((c) => ({ label: c.short, a: (CS.firstFinite(c.series[state.metric]) || {}).v, b: c[state.metric], region: c.region }))
       .sort((a, b) => b.b - a.b);
-    CS.change(n, w, { variant: 'dumbbell', rows, fmt: m.fmt, tick: m.tick, aLabel: '2000', bLabel: '2023' });
+    CS.change(n, w, { variant: 'dumbbell', rows, fmt: m.fmt, tick: m.tick, aLabel: String(Y0), bLabel: 'Latest' });
   });
+  $('chg-legend').replaceChildren(
+    el('span', { class: 'k' }, el('i', { class: 'dt', style: 'background:var(--surface);box-shadow:inset 0 0 0 2px var(--muted)' }), String(Y0)),
+    el('span', { class: 'k' }, el('i', { class: 'dt', style: 'background:var(--accent)' }), 'Latest'));
 
   function renderKpis() {
     const m = CS.METRICS[state.metric];
     const cs = picked();
+    const vs = withValue(cs);
     const med = CS.medianSeries(cs, state.metric);
-    const now = med[med.length - 1], then = med[0];
-    const sorted = cs.slice().sort((a, b) => b[state.metric] - a[state.metric]);
+    const nowF = CS.lastFinite(med), thenF = CS.firstFinite(med);
+    const sorted = vs.slice().sort((a, b) => b[state.metric] - a[state.metric]);
     const hi = sorted[0], lo = sorted[sorted.length - 1];
     const popByRegion = CS.REGIONS.map((r) => ({ label: r, color: CS.regionColor(r), v: cs.filter((c) => c.region === r).reduce((a, c) => a + c.pop, 0) }));
     const splitUnit = (s) => { const mm = /^(\$?[\d.,]+[KMB]?)(.*)$/.exec(s); return mm ? [mm[1], mm[2].trim()] : [s, '']; };
-    const [mv, mu] = splitUnit(m.fmt(now));
+    const [mv, mu] = splitUnit(m.fmt(nowF && nowF.v));
+    const dl = nowF && thenF ? CS.deltaOf(nowF.v, thenF.v, m) : null;
     $('kpis').replaceChildren(
-      CS.kpi({ variant: 'spark', label: `Median ${m.label.toLowerCase()}`, value: mv, unit: mu || (m.key === 'life' ? 'yrs' : ''), delta: { ...CS.deltaOf(now, then, m), ctx: 'since 2000' }, spark: med }),
+      CS.kpi({ variant: 'spark', label: `Median ${m.label.toLowerCase()}`, value: mv, unit: mu || (m.key === 'life' ? 'yrs' : ''), delta: dl && { ...dl, ctx: `since ${D.years[thenF.i]}` }, spark: med }),
       CS.kpi({ variant: 'share', label: 'People covered', value: CS.fmtPop(cs.reduce((a, c) => a + c.pop, 0)), unit: `in ${cs.length} countries`, share: popByRegion }),
-      CS.kpi({ variant: 'plain', label: 'Highest', value: m.fmt(hi[state.metric]), foot: hi.name }),
-      CS.kpi({ variant: 'plain', label: 'Lowest', value: m.fmt(lo[state.metric]), foot: lo.name }),
+      CS.kpi({ variant: 'plain', label: 'Highest', value: hi ? m.fmt(hi[state.metric]) : '–', foot: hi ? `${hi.name} · ${hi.year[state.metric]}` : '' }),
+      CS.kpi({ variant: 'plain', label: 'Lowest', value: lo ? m.fmt(lo[state.metric]) : '–', foot: lo ? `${lo.name} · ${lo.year[state.metric]}` : '' }),
     );
   }
 
   function renderTable() {
     $('table').replaceChildren();
     CS.table($('table'), { rows: picked(), metric: state.metric, variant: 'comfortable', limit: 10 });
+    $('table-title').textContent = `All countries · ${withValue(picked()).length} with data`;
   }
 
   function renderTitles() {
@@ -115,8 +105,19 @@
     $('map-title').textContent = `${m.label} by country`;
     $('bars-title').textContent = state.metric === 'co2' ? 'Highest 10 emitters per person' : `Highest 10 · ${m.label.toLowerCase()}`;
     $('line-title').textContent = `${m.label}, trend by region`;
+    $('line-sub').textContent = `Median of countries in each region, ${Y0}–${Y1}${m.log ? ' · log scale' : ''}`;
     $('dist-title').textContent = `${m.label}, spread within regions`;
-    $('chg-title').textContent = `${m.label}, 2000 → 2023`;
+    $('chg-title').textContent = `${m.label}, ${Y0} → latest`;
+  }
+
+  function renderSources() {
+    const order = [['life', 'Life expectancy'], ['gdp', 'GDP per person'], ['co2', 'CO₂ per person'], ['net', 'Internet users'], ['pop', 'Population']];
+    $('sources').replaceChildren(...order.flatMap(([k, lab]) => {
+      const s = (D.sources || {})[k];
+      if (!s) return [];
+      return [el('dt', { text: lab }), el('dd', {}, `${s.citation}${s.unit ? ` · ${s.unit}` : ''}${s.lastUpdated ? ` · updated ${s.lastUpdated}` : ''} · `, el('a', { href: s.url, target: '_blank', rel: 'noopener', text: 'OWID chart' }))];
+    }));
+    $('data-note').textContent = `${D.note} Each country shows its latest available year (at most 3 years old). Data built ${D.generated}.`;
   }
 
   function update() {
@@ -125,9 +126,7 @@
     renderTable();
     charts.forEach((c) => c.redraw());
   }
-  renderTitles(); renderKpis(); renderTable();
+  renderTitles(); renderKpis(); renderTable(); renderSources();
   document.addEventListener('cs:theme', () => { renderKpis(); renderTable(); });
-
-  $('data-note').textContent = D.note;
   if (window.CS_LINKS) $('next').href = window.CS_LINKS.components;
 })();
